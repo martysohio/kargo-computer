@@ -1,0 +1,181 @@
+# Euler's (linear) sieve, computed one step per Kargo promotion.
+#
+# Loop: Warehouse sees a new commit to state.yaml -> Freight -> auto-promotion
+# to the `sieve` Stage -> promotion processes one number i, rewrites
+# state.yaml, commits and pushes -> Warehouse sees the new commit -> ...
+# Once i > n the step makes no change, nothing is pushed, and the loop stops.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: sieve
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: ProjectConfig
+metadata:
+  name: sieve
+  namespace: sieve
+spec:
+  promotionPolicies:
+  - stageSelector:
+      name: sieve
+    autoPromotionEnabled: true
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: sieve-state
+  namespace: sieve
+spec:
+  shard: kargo-test
+  interval: 1m
+  subscriptions:
+  - git:
+      repoURL: https://github.com/martysohio/kargo-computer.git
+      branch: main
+      commitSelectionStrategy: NewestFromBranch
+      includePaths:
+      - state.yaml
+      discoveryLimit: 5
+---
+# Reusable: clone a branch of a repo into the promotion workspace.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: git-checkout
+  namespace: sieve
+spec:
+  vars:
+  - name: repoURL
+  - name: branch
+    value: main
+  - name: path
+    value: ./repo
+  steps:
+  - uses: git-clone
+    config:
+      repoURL: ${{ vars.repoURL }}
+      checkout:
+      - branch: ${{ vars.branch }}
+        path: ${{ vars.path }}
+---
+# Reusable: one iteration of Euler's (linear) sieve over a state file.
+#
+# State: n (limit), i (next number to process), primes (found so far),
+# lp (least prime factor of every index 0..n; 0 = not yet known).
+# For the current i: if lp[i] == 0 then i is prime. Then, for every prime
+# p <= lp[i] with i*p <= n, set lp[i*p] = p. Each composite is marked exactly
+# once, by its least prime factor, which is what makes this Euler's sieve.
+#
+# Outputs (via compose-output): message, done, skip.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: euler-sieve-step
+  namespace: sieve
+spec:
+  vars:
+  - name: stateFile
+    value: ./repo/state.yaml
+  steps:
+  - uses: yaml-parse
+    as: parse
+    config:
+      path: ${{ vars.stateFile }}
+      outputs:
+      # Plain expr-lang (no ${{ }}), evaluated by yaml-parse against the file.
+      # $env["false"] is a fallback: YAML 1.1 parses a bare `n:` key as the
+      # boolean false, so an unquoted `n: 10` arrives under the key "false".
+      - name: next
+        fromExpression: |
+          let N = int($env["n"] ?? $env["false"]);
+          let I = int(i ?? 2);
+          let P = type(primes) == "array" ? map(primes, int(#)) : [];
+          let LP = type(lp) == "array" ? lp : [];
+          let L = map(0..N, # < len(LP) ? int(LP[#]) : 0);
+          let fin = I > N;
+          let cur = fin ? -1 : L[I];
+          let isPrime = cur == 0;
+          let LPI = isPrime ? I : cur;
+          let P2 = isPrime ? concat(P, [I]) : P;
+          let M = fin ? [] : filter(P2, # <= LPI && # * I <= N);
+          let L2 = fin ? L : map(0..N, # == I ? LPI : (# % I == 0 && int(# / I) in M ? int(# / I) : L[#]));
+          {
+            "skip": fin,
+            "n": N,
+            "i": fin ? I : I + 1,
+            "done": fin || I + 1 > N,
+            "primes": "[" + join(map(P2, string(#)), ", ") + "]",
+            "lp": "[" + join(map(L2, string(#)), ", ") + "]",
+            "msg": "sieve: i=" + string(I) + (isPrime ? " is prime" : " lp=" + string(LPI)) + (len(M) > 0 ? ", marked " + join(map(M, string(# * I)), ", ") : "")
+          }
+  - uses: file-write
+    if: ${{ !task.outputs.parse.next.skip }}
+    config:
+      path: ${{ vars.stateFile }}
+      overwrite: true
+      permissions: "0644"
+      contents: |
+        # Euler's (linear) sieve state. Kargo rewrites this file on every promotion.
+        # n: find all primes <= n | i: next number to process | lp: least prime factor of each index
+        "n": ${{ task.outputs.parse.next.n }}
+        i: ${{ task.outputs.parse.next.i }}
+        done: ${{ task.outputs.parse.next.done }}
+        primes: ${{ task.outputs.parse.next.primes }}
+        lp: ${{ task.outputs.parse.next.lp }}
+  - uses: compose-output
+    as: result
+    config:
+      message: ${{ task.outputs.parse.next.msg }}
+      done: ${{ task.outputs.parse.next.done }}
+      skip: ${{ task.outputs.parse.next.skip }}
+---
+# Reusable: commit everything in a working tree and push it. git-commit is a
+# no-op when nothing changed, so a finished sieve pushes nothing.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: git-commit-push
+  namespace: sieve
+spec:
+  vars:
+  - name: path
+    value: ./repo
+  - name: message
+  steps:
+  - uses: git-commit
+    config:
+      path: ${{ vars.path }}
+      message: ${{ vars.message }}
+  - uses: git-push
+    config:
+      path: ${{ vars.path }}
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: sieve
+  namespace: sieve
+spec:
+  shard: kargo-test
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: sieve-state
+    sources:
+      direct: true
+  promotionTemplate:
+    spec:
+      vars:
+      - name: repoURL
+        value: https://github.com/martysohio/kargo-computer.git
+      steps:
+      - task:
+          name: git-checkout
+      - task:
+          name: euler-sieve-step
+        as: sieve
+      - task:
+          name: git-commit-push
+        vars:
+        - name: message
+          value: ${{ outputs.sieve.message }}
