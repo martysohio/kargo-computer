@@ -8,7 +8,7 @@ Finds every prime `<= n` with Euler's (linear) sieve. Kargo runs it as a self-cl
 | part  | what it is |
 |-------|------------|
 | RAM   | `state.yaml` on `main` |
-| Clock | Warehouse `sieve-state` turns each commit to `state.yaml` into Freight |
+| Clock | a GitHub push webhook refreshes Warehouse `sieve-state`, which turns each commit to `state.yaml` into Freight (a 15m poll is the backstop) |
 | CPU   | Stage `sieve` runs one sieve iteration per auto-promotion |
 | Halt  | once `i > n` the step changes nothing, so nothing is pushed and the loop stops |
 
@@ -45,3 +45,7 @@ lp: "[]"         # least prime factor of 0..n; padded with zeros automatically
 | `tasks/git-commit-push.yaml` | PromotionTask `git-commit-push` |
 
 Pushes use the shared git credential `martysohiogit` on the Kargo instance.
+
+### Webhook
+
+`projectconfig.yaml` defines a GitHub webhook receiver named `github`. It is backed by the Secret `github-webhook-secret` in namespace `sieve`: key `secret`, label `kargo.akuity.io/cred-type: generic`. The Secret is not kept in git. The GitHub repo has a push webhook (JSON, signed with the same secret) pointing at the receiver URL in the ProjectConfig's `status.webhookReceivers`. That URL changes if the secret changes.

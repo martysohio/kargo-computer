@@ -1,3 +1,6 @@
+# Auto-promotion for the sieve Stage, plus a GitHub webhook receiver so each
+# push (including Kargo's own) refreshes the Warehouse immediately.
+# The receiver's URL is published in this resource's status.webhookReceivers.
 apiVersion: kargo.akuity.io/v1alpha1
 kind: ProjectConfig
 metadata:
@@ -8,3 +11,8 @@ spec:
   - stageSelector:
       name: sieve
     autoPromotionEnabled: true
+  webhookReceivers:
+  - name: github
+    github:
+      secretRef:
+        name: github-webhook-secret  # Secret in ns sieve, key `secret`, label cred-type: generic
