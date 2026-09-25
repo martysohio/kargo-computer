@@ -1,7 +1,7 @@
 # Euler's (linear) sieve state (RAM). Kargo updates this file on every promotion.
 # To start a run, set "n" and reset the other keys; every key must be present.
 "n": 10          # quoted: YAML 1.1 reads a bare n as false
-i: 2             # next number to process
+i: 3
 done: false
-primes: "[]"     # JSON array of primes found so far
-lp: "[]"         # JSON array: least prime factor of 0..n (0 = unknown)
+primes: "[2]"
+lp: "[0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0]"
