@@ -1,0 +1,20 @@
+# Reusable: clone a branch of a repo into the promotion workspace.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: git-checkout
+  namespace: sieve
+spec:
+  vars:
+  - name: repoURL
+  - name: branch
+    value: main
+  - name: path
+    value: ./repo
+  steps:
+  - uses: git-clone
+    config:
+      repoURL: ${{ vars.repoURL }}
+      checkout:
+      - branch: ${{ vars.branch }}
+        path: ${{ vars.path }}

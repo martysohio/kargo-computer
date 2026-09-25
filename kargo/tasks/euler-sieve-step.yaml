@@ -1,0 +1,130 @@
+# Reusable: one iteration of Euler's (linear) sieve over a state file.
+#
+# State file keys (all must exist; yaml-update only updates existing keys):
+#   "n"    : find all primes <= n (quoted: YAML 1.1 reads a bare n as false)
+#   i      : next number to process
+#   done   : true once every number up to n has been processed
+#   primes : JSON array of primes found so far
+#   lp     : JSON array, least prime factor of each index 0..n (0 = unknown)
+#
+# Kargo coerces every ${{ }} result that looks like a number into a float64,
+# so values read back from earlier steps are wrapped in int() where used.
+#
+# Outputs: message (the commit message), done, halted.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: euler-sieve-step
+  namespace: sieve
+spec:
+  vars:
+  - name: stateFile
+    value: ./repo/state.yaml
+  steps:
+  # --- fetch ---------------------------------------------------------------
+  - uses: yaml-parse
+    as: mem
+    config:
+      path: ${{ vars.stateFile }}
+      outputs:
+      - name: "n"  # quoted: a bare n is YAML 1.1 for false
+        fromExpression: $env["n"] ?? $env["false"]  # also accept a bare `n:`
+      - name: i
+        fromExpression: i
+      - name: primes
+        fromExpression: primes
+      - name: lp
+        fromExpression: lp
+
+  # --- decode --------------------------------------------------------------
+  # Arrays are stored as JSON strings; lp is padded with zeros to n+1 entries.
+  - uses: compose-output
+    as: cur
+    config:
+      "n": ${{ int(task.outputs.mem.n) }}
+      i: ${{ int(task.outputs.mem.i ?? 2) }}
+      halted: ${{ int(task.outputs.mem.i ?? 2) > int(task.outputs.mem.n) }}
+      primes: >-
+        ${{ let P = task.outputs.mem.primes ?? "[]";
+            type(P) == "string" ? fromJSON(P) : P }}
+      lp: >-
+        ${{ let LP = task.outputs.mem.lp ?? "[]";
+            let L = type(LP) == "string" ? fromJSON(LP) : LP;
+            map(0..int(task.outputs.mem.n), # < len(L) ? int(L[#]) : 0) }}
+
+  # --- execute: is i prime? ------------------------------------------------
+  # lp[i] == 0 means nothing crossed i off, so it is prime and its own lp.
+  - uses: compose-output
+    as: step
+    config:
+      isPrime: >-
+        ${{ !task.outputs.cur.halted
+            && int(task.outputs.cur.lp[int(task.outputs.cur.i)]) == 0 }}
+      lpI: >-
+        ${{ let I = int(task.outputs.cur.i);
+            task.outputs.cur.halted ? 0 :
+            int(task.outputs.cur.lp[I]) == 0 ? I : int(task.outputs.cur.lp[I]) }}
+      primes: >-
+        ${{ let I = int(task.outputs.cur.i);
+            let P = map(task.outputs.cur.primes, int(#));
+            !task.outputs.cur.halted && int(task.outputs.cur.lp[I]) == 0
+              ? concat(P, [I]) : P }}
+
+  # --- execute: Euler cross-off --------------------------------------------
+  # For each prime p <= lp(i) with i*p <= n, set lp[i*p] = p. Every composite
+  # is crossed off exactly once, by its least prime factor.
+  - uses: compose-output
+    as: sieved
+    if: ${{ !task.outputs.cur.halted }}
+    config:
+      marked: >-
+        ${{ let I = int(task.outputs.cur.i);
+            let N = int(task.outputs.cur.n);
+            let LPI = int(task.outputs.step.lpI);
+            map(filter(task.outputs.step.primes, int(#) <= LPI && int(#) * I <= N),
+                int(#) * I) }}
+      lp: >-
+        ${{ let I = int(task.outputs.cur.i);
+            let LPI = int(task.outputs.step.lpI);
+            let P = map(task.outputs.step.primes, int(#));
+            map(0..int(task.outputs.cur.n),
+                # == I ? LPI :
+                (# % I == 0 && int(# / I) <= LPI && int(# / I) in P)
+                  ? int(# / I) : int(task.outputs.cur.lp[#])) }}
+      next: ${{ int(task.outputs.cur.i) + 1 }}
+      done: ${{ int(task.outputs.cur.i) + 1 > int(task.outputs.cur.n) }}
+
+  # --- write back ----------------------------------------------------------
+  # quote() keeps the JSON arrays as strings; otherwise Kargo would parse them
+  # back into arrays, which yaml-update (scalars only) rejects.
+  - uses: yaml-update
+    if: ${{ !task.outputs.cur.halted }}
+    config:
+      path: ${{ vars.stateFile }}
+      updates:
+      - key: i
+        value: ${{ int(task.outputs.sieved.next) }}
+      - key: done
+        value: ${{ task.outputs.sieved.done }}
+      - key: primes
+        value: ${{ quote("[" + join(map(task.outputs.step.primes, string(int(#))), ", ") + "]") }}
+      - key: lp
+        value: ${{ quote("[" + join(map(task.outputs.sieved.lp, string(int(#))), ", ") + "]") }}
+
+  # --- report --------------------------------------------------------------
+  - uses: compose-output
+    as: result
+    config:
+      halted: ${{ task.outputs.cur.halted }}
+      done: ${{ task.outputs.cur.halted || task.outputs.sieved.done }}
+      message: >-
+        ${{ task.outputs.cur.halted ? "halted" :
+            task.outputs.sieved.done
+              ? "HALT: primes <= " + string(int(task.outputs.cur.n)) + ": ["
+                + join(map(task.outputs.step.primes, string(int(#))), ", ") + "]"
+              : "sieve: i=" + string(int(task.outputs.cur.i))
+                + (task.outputs.step.isPrime ? " is prime"
+                   : " lp=" + string(int(task.outputs.step.lpI)))
+                + (len(task.outputs.sieved.marked) > 0
+                   ? ", marked " + join(map(task.outputs.sieved.marked, string(int(#))), ", ")
+                   : "") }}

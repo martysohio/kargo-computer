@@ -1,0 +1,20 @@
+# Reusable: commit everything in a working tree and push it. git-commit is a
+# no-op when nothing changed, so a halted sieve pushes nothing.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: git-commit-push
+  namespace: sieve
+spec:
+  vars:
+  - name: path
+    value: ./repo
+  - name: message
+  steps:
+  - uses: git-commit
+    config:
+      path: ${{ vars.path }}
+      message: ${{ vars.message }}
+  - uses: git-push
+    config:
+      path: ${{ vars.path }}

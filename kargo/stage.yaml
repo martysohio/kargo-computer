@@ -1,0 +1,30 @@
+# The CPU: fetch, execute one sieve step, write back.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: sieve
+  namespace: sieve
+spec:
+  shard: kargo-test
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: sieve-state
+    sources:
+      direct: true
+  promotionTemplate:
+    spec:
+      vars:
+      - name: repoURL
+        value: https://github.com/martysohio/kargo-computer.git
+      steps:
+      - task:
+          name: git-checkout
+      - task:
+          name: euler-sieve-step
+        as: sieve
+      - task:
+          name: git-commit-push
+        vars:
+        - name: message
+          value: ${{ outputs.sieve.message }}

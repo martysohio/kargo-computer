@@ -3,28 +3,45 @@ a weird computer using promotions
 
 ## Euler's sieve (Kargo project `sieve`)
 
-Finds every prime `<= n` with Euler's (linear) sieve. Each Kargo promotion runs one step of the algorithm:
+Finds every prime `<= n` with Euler's (linear) sieve. Kargo runs it as a self-clocking state machine:
 
-1. Warehouse `sieve-state` watches `state.yaml` on `main`. Each new commit becomes Freight.
-2. Stage `sieve` auto-promotes the new Freight. Its promotion template chains three reusable PromotionTasks:
-   - `git-checkout` clones `main`.
-   - `euler-sieve-step` reads `state.yaml` with `yaml-parse`, processes the number `i`, and rewrites the file with `file-write`.
-   - `git-commit-push` commits and pushes the result.
-3. The push is a new commit, so the Warehouse produces new Freight and the loop runs again.
-4. When `i > n` the step changes nothing, so nothing is committed and the loop stops with `done: true`.
+| part  | what it is |
+|-------|------------|
+| RAM   | `state.yaml` on `main` |
+| Clock | Warehouse `sieve-state` turns each commit to `state.yaml` into Freight |
+| CPU   | Stage `sieve` runs one sieve iteration per auto-promotion |
+| Halt  | once `i > n` the step changes nothing, so nothing is pushed and the loop stops |
 
-`state.yaml` fields:
+Each promotion chains three reusable PromotionTasks:
 
-| key      | meaning |
-|----------|---------|
-| `"n"`    | input: find primes up to n (the key is quoted because YAML 1.1 reads a bare `n` as `false`) |
-| `i`      | next number to process (starts at 2) |
-| `primes` | primes found so far |
-| `lp`     | least prime factor of every index `0..n` (0 = not yet known) |
-| `done`   | true once every number up to n has been processed |
+- `git-checkout` clones `main`.
+- `euler-sieve-step` runs fetch (`yaml-parse`), decode, execute and cross-off (`compose-output`), then write-back (`yaml-update`).
+- `git-commit-push` commits and pushes. The commit message records the step, e.g. `sieve: i=4 lp=2, marked 8`. The last one reads `HALT: primes <= 10: [2, 3, 5, 7]`.
 
-At step `i`: if `lp[i] == 0`, then `i` is prime. Then, for each prime `p <= lp[i]` with `i*p <= n`, set `lp[i*p] = p`. Every composite is marked exactly once, by its least prime factor. The commit message of each step records what happened (for example `sieve: i=4 lp=2, marked 8`).
+At step `i`: if `lp[i] == 0`, then `i` is prime. Then, for every prime `p <= lp[i]` with `i*p <= n`, set `lp[i*p] = p`. Every composite is crossed off exactly once, by its least prime factor.
 
-To run again, commit a new state such as `"n": 50` with `i`, `primes`, `lp` and `done` removed.
+### state.yaml
 
-Manifests are in [`kargo/sieve.yaml`](kargo/sieve.yaml).
+Every key must be present, because `yaml-update` only updates keys that already exist. To start a new run, commit:
+
+```yaml
+"n": 10          # quoted: YAML 1.1 reads a bare n as false
+i: 2
+done: false
+primes: "[]"     # JSON array, stored as a string
+lp: "[]"         # least prime factor of 0..n; padded with zeros automatically
+```
+
+### Manifests (`kargo/`)
+
+| file | resource |
+|------|----------|
+| `project.yaml` | Project `sieve` |
+| `projectconfig.yaml` | ProjectConfig: auto-promotion for Stage `sieve` |
+| `warehouse.yaml` | Warehouse `sieve-state` |
+| `stage.yaml` | Stage `sieve` |
+| `tasks/git-checkout.yaml` | PromotionTask `git-checkout` |
+| `tasks/euler-sieve-step.yaml` | PromotionTask `euler-sieve-step` |
+| `tasks/git-commit-push.yaml` | PromotionTask `git-commit-push` |
+
+Pushes use the shared git credential `martysohiogit` on the Kargo instance.

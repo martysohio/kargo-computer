@@ -1,7 +1,7 @@
-# Euler's (linear) sieve state. Kargo rewrites this file on every promotion.
-# n: find all primes <= n | i: next number to process | lp: least prime factor of each index
-"n": 10
-i: 11
-done: true
-primes: [2, 3, 5, 7]
-lp: [0, 0, 2, 3, 2, 5, 2, 7, 2, 3, 2]
+# Euler's (linear) sieve state (RAM). Kargo updates this file on every promotion.
+# To start a run, set "n" and reset the other keys; every key must be present.
+"n": 10          # quoted: YAML 1.1 reads a bare n as false
+i: 2             # next number to process
+done: false
+primes: "[]"     # JSON array of primes found so far
+lp: "[]"         # JSON array: least prime factor of 0..n (0 = unknown)

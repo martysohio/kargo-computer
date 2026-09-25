@@ -1,0 +1,17 @@
+# The clock. Only commits touching state.yaml produce Freight.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: sieve-state
+  namespace: sieve
+spec:
+  shard: kargo-test
+  interval: 20s
+  subscriptions:
+  - git:
+      repoURL: https://github.com/martysohio/kargo-computer.git
+      branch: main
+      commitSelectionStrategy: NewestFromBranch
+      includePaths:
+      - state.yaml
+      discoveryLimit: 5
