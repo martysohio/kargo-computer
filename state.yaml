@@ -1,4 +1,7 @@
 # Euler's (linear) sieve state. Kargo rewrites this file on every promotion.
 # n: find all primes <= n | i: next number to process | lp: least prime factor of each index
 "n": 10
-primes: []
+i: 3
+done: false
+primes: [2]
+lp: [0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0]
