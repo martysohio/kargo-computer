@@ -83,6 +83,8 @@ spec:
       path: ${{ vars.stateFile }}
       outputs:
       # Plain expr-lang (no ${{ }}), evaluated by yaml-parse against the file.
+      # Outputs must be JSON-safe (Kargo deep-copies them): no Go ints, so
+      # numbers are returned as strings.
       # $env["false"] is a fallback: YAML 1.1 parses a bare `n:` key as the
       # boolean false, so an unquoted `n: 10` arrives under the key "false".
       - name: next
@@ -101,8 +103,8 @@ spec:
           let L2 = fin ? L : map(0..N, # == I ? LPI : (# % I == 0 && int(# / I) in M ? int(# / I) : L[#]));
           {
             "skip": fin,
-            "n": N,
-            "i": fin ? I : I + 1,
+            "n": string(N),
+            "i": string(fin ? I : I + 1),
             "done": fin || I + 1 > N,
             "primes": "[" + join(map(P2, string(#)), ", ") + "]",
             "lp": "[" + join(map(L2, string(#)), ", ") + "]",
