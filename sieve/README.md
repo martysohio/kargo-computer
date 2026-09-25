@@ -29,6 +29,32 @@ primes: "[]"     # JSON array, stored as a string
 lp: "[]"         # least prime factor of 0..n; padded with zeros automatically
 ```
 
+## Where the result shows up
+
+The list of primes is kept in `sieve/state.yaml`. The `HALT: primes <= n: [...]` text is the task's `message` output, which is built from that list and used as the commit message.
+
+How the message is produced (`kargo/tasks/euler-sieve-step.yaml`):
+
+1. The `step` compose-output computes `primes`: the list so far, plus `i` if `i` is prime.
+2. `yaml-update` writes that list into `sieve/state.yaml` as `primes: "[2, 3, ...]"`. That file is the real result.
+3. The last step, `compose-output` with `as: result`, builds `message`:
+   - on the step that finishes (`i + 1 > n`): `HALT: primes <= n: [...]`
+   - on other steps: `sieve: i=... is prime` or `sieve: i=... lp=...`, plus any numbers it marked
+   - when the state is already halted: just `halted`
+4. A PromotionTask's outputs are whatever its final `compose-output` step publishes. In `kargo/stage.yaml` the task step is named `as: sieve`, so the value is available there as `outputs.sieve.message`.
+5. The Stage passes it to the `git-commit-push` task as `vars.message`, and `git-commit` uses it as the commit message.
+
+Where to see the list:
+
+| place | what it shows |
+|-------|---------------|
+| `sieve/state.yaml` on `main` | the full result (`primes`, `lp`, `done: true`) |
+| the `HALT:` commit on GitHub | the message from step 3 |
+| Kargo UI: Freight for that commit, and the Stage's Freight history | the same commit message, because the Warehouse copies it into the Freight |
+| Kargo UI: a Promotion's details | every step's outputs, including `sieve::step.primes` as a real array and `sieve::result.message` |
+
+The newest promotion in the Kargo UI is always the extra one that runs on the `HALT` commit. Its `message` is just `halted`, and it makes no commit. Its step outputs still include the full `primes` array, read back from `sieve/state.yaml`. The `HALT: ...` message belongs to the promotion before it: the one that processed `i = n` and made the `HALT` commit.
+
 ## Starting a new run
 
 Kargo commits to `main` on every step, so always pull first. Wait until the current run has finished (the last commit starts with `HALT:`) before starting another.
