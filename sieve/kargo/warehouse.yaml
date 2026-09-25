@@ -1,4 +1,4 @@
-# The clock. Only commits touching state.yaml produce Freight.
+# The clock. Only commits touching sieve/state.yaml produce Freight.
 # Pushes arrive through the GitHub webhook receiver (see projectconfig.yaml);
 # the slow poll below is only a backstop for missed webhook deliveries.
 apiVersion: kargo.akuity.io/v1alpha1
@@ -15,5 +15,5 @@ spec:
       branch: main
       commitSelectionStrategy: NewestFromBranch
       includePaths:
-      - state.yaml
+      - sieve/state.yaml
       discoveryLimit: 5

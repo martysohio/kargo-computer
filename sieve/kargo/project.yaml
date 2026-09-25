@@ -1,7 +1,7 @@
 # Euler's (linear) sieve on Kargo: a self-clocking state machine.
 #
-#   RAM   : state.yaml on main
-#   Clock : Warehouse "sieve-state" turns each commit to state.yaml into Freight
+#   RAM   : sieve/state.yaml on main
+#   Clock : Warehouse "sieve-state" turns each commit to sieve/state.yaml into Freight
 #   CPU   : Stage "sieve" runs one sieve iteration per (auto-)promotion
 #   Halt  : once i > n the step changes nothing, so nothing is pushed and no
 #           new Freight appears; the final commit message reads "HALT: [...]"

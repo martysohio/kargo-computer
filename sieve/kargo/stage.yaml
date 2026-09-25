@@ -23,6 +23,9 @@ spec:
       - task:
           name: euler-sieve-step
         as: sieve
+        vars:
+        - name: stateFile
+          value: ./repo/sieve/state.yaml
       - task:
           name: git-commit-push
         vars:
